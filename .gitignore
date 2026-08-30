@@ -1,0 +1,27 @@
+# ---- SECRETS: never commit real keys ----
+.env
+.env.local
+*.key
+
+# ---- scraped / enriched data (yours, not the repo's) ----
+raw/
+*.csv
+*.jsonl
+*.log
+localpipe_jobs.json
+waterfall_progress.jsonl
+
+# ---- python ----
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.ipynb_checkpoints/
+
+# ---- editors / os ----
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
