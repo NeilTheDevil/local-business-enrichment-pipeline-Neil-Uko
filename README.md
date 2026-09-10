@@ -308,6 +308,21 @@ Correctly identified Turner, DPR, Gilbane, Suffolk, JE Dunn, and Mortenson in th
 
 **AI Ark** — Cloudflare blocks Python's default User-Agent with a `403 / error code: 1010` that looks exactly like a bad API key. Send a browser User-Agent on every call; the auth header is `X-TOKEN` with the raw key, no prefix. **The job title is not in `headline`,** which comes back `null` — it lives at `position_groups[].profile_positions[].title`, and `department.seniority` is a coarse bucket (`senior`, `director`, `mid_level`) that is not a substitute for reading the real title. **`/v1/people/export` requires a webhook** and 400s without one; with no public webhook URL, use the synchronous `POST /v2/people/export/single` instead. **Search seniority-filtered first** — see [Corrections](#corrections) — and note that AI Ark holds **duplicate profile records for the same human**, so collapse candidates by name before paying for their email.
 
+**AI Ark billing — the single most expensive thing to get wrong.** People search bills **0.5 credits per RETURNED RESULT**, not per call. `size` is therefore a direct cost dial, and a zero-result search is free. Two consequences that are not obvious:
+
+- **Never batch domains into one search, and never paginate.** One domain per call, `size` no larger than the number of contacts you actually want, `page: 0` only. Measured on the same 200 domains: batching 100 domains per call at `size: 100` across up to 25 pages billed **6.50 credits per domain**; one domain per call at `size: 10` billed **0.16** — a **98% reduction for identical output**. The batched version billed 2,601 people results to keep 6 usable emails (217 credits each). Batching *looks* like an optimisation and is the opposite: you pay for every person on every page, and the title filter then discards nearly all of them.
+- **Concurrency is free.** Because billing is per result and not per call, running the per-domain searches in parallel changes wall time only. 8 workers took a 3,900-domain run from ~4 hours to ~45 minutes at identical cost.
+
+**There is no cheaper AI Ark door — the MCP is billed identically.** Verified by balance deltas, not docs:
+
+| Call | MCP | REST |
+|---|---|---|
+| `company_search` | 0.1 / result | 0.1 / result |
+| `people_search` | **0.5 / result** | **0.5 / result** |
+| `export_single` (email) | 1 / found | 1 / found |
+
+Company search is cheap enough to read as free at list-building scale — which is where the "AI Ark search is free" folklore comes from — but **people search is not free on either transport.** Worse, **the MCP `seniority` enum is `c_suite, vp, director, manager, senior, mid-level, entry` and contains neither `owner` nor `founder`**, while the REST enum does. Against an owner-operated business the MCP filter returns nothing where REST returns the owner (verified: one plumbing domain returned 0 on MCP `c_suite`, and "Owner" on REST). **For owner-operator ICPs, use REST.**
+
 **Prospeo** — needs a name, so it cannot start from a bare domain; search for a `person_id` first, then enrich. Masked addresses contain `*` and are unusable — treat them as a miss, not a hit. `free_enrichment: true` means no credit was charged. Prospeo fires at **two** points in the waterfall: once per AI Ark contact who has a name but no email, and again at company level if no contact produced an email at all, using the best name known (LocalPipe's preferred, else AI Ark's).
 
 **Both AI Ark and Prospeo have thin coverage of small local businesses** — roughly 30% of small US contractors had any person on file. They are LinkedIn-shaped B2B databases; sole proprietors are largely absent. The waterfall's hit rate tracks that directly: **27% on a metro-heavy US list, 16% on a deliberately small-operator Canadian list.** LocalPipe carries the bulk regardless.
@@ -317,6 +332,10 @@ Correctly identified Turner, DPR, Gilbane, Suffolk, JE Dunn, and Mortenson in th
 Notes rot. A wrong note is worse than no note, so conclusions that turned out wrong are corrected here in public rather than quietly deleted.
 
 **"AI Ark's seniority filter destroys recall" — WRONG.** An earlier version of this README said to search unfiltered. That was based on small-business misses, and it was the wrong read. On a 4,145-employee firm the **filtered** search returned 13 people including the President & CEO, while the **unfiltered** search returned superintendents, recruiters and field coordinators — the CEO is unreachable without the filter. The misses that produced the original claim were companies AI Ark has **no records for at all** (0 filtered *and* 0 unfiltered), not a filtering artefact. The code does filtered-first with unfiltered as a fallback for small firms whose owner is not seniority-tagged.
+
+**"Batching domains into one AI Ark search is cheaper" — WRONG, and expensive.** It is billed per returned result, so batching multiplies the bill instead of amortising it. Measured 6.50 credits/domain batched vs 0.16 per-domain — see [Provider gotchas](#provider-gotchas-learned-the-hard-way). The reference implementation in `enrich_waterfall.py` is cost-safe *because* of its shape (one domain, small `size`, `page: 0`), not by accident — do not "optimise" it into batches.
+
+**"AI Ark search is free" — HALF WRONG, and worth stating precisely.** Company search at 0.1/result is near enough to free at list-building scale. **People search at 0.5/result is not**, on MCP or REST. An earlier SOP recorded both as free; only the first is defensible.
 
 **"Canadian coverage will be thinner than US" — WRONG.** Predicted 45–55%, came in at 61% against the US's 57%.
 
