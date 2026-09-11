@@ -210,6 +210,35 @@ One CSV lands in your Downloads folder, sorted by tier, then location, then name
 
 Because `email_source` records which provider supplied each address, this single file already shows what any one stage contributed — filter on it rather than exporting a per-stage file.
 
+### Variant: writing back into a provider's own export schema
+
+The 27-column schema below is what this pipeline emits when it owns the file. When the
+deliverable instead has to **land back in a table the provider already populated** — a
+LocalPipe export sitting in Clay, say — do not bolt parallel columns onto it. A run that
+appended `Decision Maker Email` / `Decision Maker Name` beside the native fields produced a
+file nobody could use: the addresses were in columns the table's own workflow does not read.
+
+**Reproduce the provider's export exactly, in order, and write findings into its native
+fields.** For a LocalPipe export that means:
+
+| Where a found address goes | Rule |
+|---|---|
+| `Primary Email` + `Primary Email Type` | **every** contact found, without exception |
+| `Owner Name` / `Owner First Name` / `Owner Last Name` / `Owner Email` | **only** when the person is a principal |
+
+A principal is CEO, Founder, Owner/Co-Owner, President, Managing Director, Principal, Partner
+or COO — someone who owns the business. A **General Manager runs it but does not own it**, so
+a GM fills `Primary Email` only and never `Owner Email`. Add exactly **one** column,
+`Contact Title`, carrying the real job title: that single column is what lets a reader tell an
+owner row from a hired-manager row, and it is cheaper than any amount of schema invention.
+
+**Dedupe globally by email before writing, not after.** One owner routinely holds two Google
+listings — the same business with a second storefront — and enrichment is keyed on the root
+domain, so that owner's address attaches to every listing. Measured on one 8,621-business run:
+30 addresses spread across 60 rows. Assert the file has zero repeated addresses, and keep a
+business row even when its only contact was the one deduped away — the first version of that
+dedupe silently dropped **20 businesses** whose sole contact had already been seen.
+
 ### The 27 columns, in order
 
 Every one of these must be present, spelled exactly this way, in exactly this order. The Clay template maps against these names — rename or reorder one and that mapping silently stops matching.
@@ -332,6 +361,17 @@ Company search is cheap enough to read as free at list-building scale — which 
 Notes rot. A wrong note is worse than no note, so conclusions that turned out wrong are corrected here in public rather than quietly deleted.
 
 **"AI Ark's seniority filter destroys recall" — WRONG.** An earlier version of this README said to search unfiltered. That was based on small-business misses, and it was the wrong read. On a 4,145-employee firm the **filtered** search returned 13 people including the President & CEO, while the **unfiltered** search returned superintendents, recruiters and field coordinators — the CEO is unreachable without the filter. The misses that produced the original claim were companies AI Ark has **no records for at all** (0 filtered *and* 0 unfiltered), not a filtering artefact. The code does filtered-first with unfiltered as a fallback for small firms whose owner is not seniority-tagged.
+
+**"Any title containing a decision-maker word is a decision maker" — WRONG.** Matching
+inclusions before exclusions lets `Partner Intelligence Manager` read as a Partner and
+`Vice President of Operations` read as a Vice President. Worse, the departmental variants are
+the bulk of what a seniority-filtered search returns at a trade business: on one run the
+qualified forms — Operations Manager, Director of Operations, VP Operations, VP of Business
+Development, VP of Construction, Service Manager — were **103 of the contacts found**, every
+one of them a functional manager rather than a principal. **Reject any title where a
+decision-maker word is qualified by a department** (`president|vp|director|head` followed by
+`of operations|of sales|of construction|…`), and reject `<department> Manager` outright while
+keeping the bare `General Manager`. Check exclusions first, always.
 
 **"Batching domains into one AI Ark search is cheaper" — WRONG, and expensive.** It is billed per returned result, so batching multiplies the bill instead of amortising it. Measured 6.50 credits/domain batched vs 0.16 per-domain — see [Provider gotchas](#provider-gotchas-learned-the-hard-way). The reference implementation in `enrich_waterfall.py` is cost-safe *because* of its shape (one domain, small `size`, `page: 0`), not by accident — do not "optimise" it into batches.
 
