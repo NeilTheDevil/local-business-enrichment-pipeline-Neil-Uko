@@ -210,35 +210,6 @@ One CSV lands in your Downloads folder, sorted by tier, then location, then name
 
 Because `email_source` records which provider supplied each address, this single file already shows what any one stage contributed — filter on it rather than exporting a per-stage file.
 
-### Variant: writing back into a provider's own export schema
-
-The 27-column schema below is what this pipeline emits when it owns the file. When the
-deliverable instead has to **land back in a table the provider already populated** — a
-LocalPipe export sitting in Clay, say — do not bolt parallel columns onto it. A run that
-appended `Decision Maker Email` / `Decision Maker Name` beside the native fields produced a
-file nobody could use: the addresses were in columns the table's own workflow does not read.
-
-**Reproduce the provider's export exactly, in order, and write findings into its native
-fields.** For a LocalPipe export that means:
-
-| Where a found address goes | Rule |
-|---|---|
-| `Primary Email` + `Primary Email Type` | **every** contact found, without exception |
-| `Owner Name` / `Owner First Name` / `Owner Last Name` / `Owner Email` | **only** when the person is a principal |
-
-A principal is CEO, Founder, Owner/Co-Owner, President, Managing Director, Principal, Partner
-or COO — someone who owns the business. A **General Manager runs it but does not own it**, so
-a GM fills `Primary Email` only and never `Owner Email`. Add exactly **one** column,
-`Contact Title`, carrying the real job title: that single column is what lets a reader tell an
-owner row from a hired-manager row, and it is cheaper than any amount of schema invention.
-
-**Dedupe globally by email before writing, not after.** One owner routinely holds two Google
-listings — the same business with a second storefront — and enrichment is keyed on the root
-domain, so that owner's address attaches to every listing. Measured on one 8,621-business run:
-30 addresses spread across 60 rows. Assert the file has zero repeated addresses, and keep a
-business row even when its only contact was the one deduped away — the first version of that
-dedupe silently dropped **20 businesses** whose sole contact had already been seen.
-
 ### The 27 columns, in order
 
 Every one of these must be present, spelled exactly this way, in exactly this order. The Clay template maps against these names — rename or reorder one and that mapping silently stops matching.
