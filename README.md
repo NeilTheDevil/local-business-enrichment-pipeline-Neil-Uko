@@ -327,6 +327,28 @@ Company search is cheap enough to read as free at list-building scale — which 
 
 **Both AI Ark and Prospeo have thin coverage of small local businesses** — roughly 30% of small US contractors had any person on file. They are LinkedIn-shaped B2B databases; sole proprietors are largely absent. The waterfall's hit rate tracks that directly: **27% on a metro-heavy US list, 16% on a deliberately small-operator Canadian list.** LocalPipe carries the bulk regardless.
 
+## Two filters that must run on the DELIVERED list, not just the enrichment path
+
+Both of these were found by QA'ing a finished send list, after the pipeline reported clean.
+
+**Chain/franchise exclusion has to be applied at export.** The chain filter naturally lives on
+the enrichment path — you skip a franchise domain so you don't pay to enrich it. But a row that
+*already had an email from the scrape* never reaches that filter, so it flows straight into the
+deliverable. Measured: a 36-row landscaping send list contained a **Lawn Doctor** franchise row
+whose address was `group333@lawndoctor.com` — a corporate routing mailbox on the franchisor's
+domain, not the local unit. The enrichment filter had excluded Lawn Doctor correctly; the row
+arrived via the "already has an email" branch. **Run the blocklist over every row you ship, not
+only the rows you enrich.**
+
+**Provider placeholder strings have to be blanked at export.** LocalPipe returns the literal
+string `"not found"` rather than null, and an exporter that copies source columns verbatim
+carries it into the deliverable — where it reads as a real value to every downstream tool and
+renders as "not found" inside an email if the column is ever used as a variable. One pair of
+runs shipped **67,706** such cells before this was caught. Blank `not found`, `n/a`, `null`,
+`none`, `nan` and a bare `-` on the way out, and assert zero remain.
+
+---
+
 ## Corrections
 
 Notes rot. A wrong note is worse than no note, so conclusions that turned out wrong are corrected here in public rather than quietly deleted.
